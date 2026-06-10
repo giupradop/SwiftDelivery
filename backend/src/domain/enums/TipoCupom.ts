@@ -1,0 +1,5 @@
+export enum TipoCupom {
+  PERCENTUAL = 'PERCENTUAL',
+  VALOR_FIXO = 'VALOR_FIXO',
+  FRETE_GRATIS = 'FRETE_GRATIS',
+}
