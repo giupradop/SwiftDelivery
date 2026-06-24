@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { LojaRepository } from '../../database/repositories/LojaRepository'
 import { ProdutoRepository } from '../../database/repositories/ProdutoRepository'
 import { PedidoRepository } from '../../database/repositories/PedidoRepository'
+import { CalcularFrete } from '../../../application/use-cases/pedido/CalcularFrete'
 
 const lojaRepo = new LojaRepository()
 const produtoRepo = new ProdutoRepository()
@@ -21,5 +22,15 @@ export class LojaController {
   async listarPedidos(req: Request, res: Response) {
     const pedidos = await pedidoRepo.findByLoja(req.params.id)
     res.json(pedidos)
+  }
+
+  async calcularFrete(req: Request, res: Response) {
+    try {
+      const useCase = new CalcularFrete()
+      const resultado = await useCase.executar(req.params.id, req.params.clienteId)
+      res.json(resultado)
+    } catch (erro) {
+      res.status(400).json({ erro: (erro as Error).message })
+    }
   }
 }

@@ -1,7 +1,9 @@
 import { Request, Response } from 'express'
 import { ClienteRepository } from '../../database/repositories/ClienteRepository'
+import { PedidoRepository } from '../../database/repositories/PedidoRepository'
 
 const clienteRepo = new ClienteRepository()
+const pedidoRepo = new PedidoRepository()
 
 export class ClienteController {
   async listar(_req: Request, res: Response) {
@@ -15,5 +17,10 @@ export class ClienteController {
       return res.status(404).json({ erro: 'Cliente não encontrado' })
     }
     res.json(cliente)
+  }
+
+  async listarPedidos(req: Request, res: Response) {
+    const pedidos = await pedidoRepo.findByCliente(req.params.id)
+    res.json(pedidos)
   }
 }

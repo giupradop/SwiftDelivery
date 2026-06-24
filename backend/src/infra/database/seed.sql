@@ -1,3 +1,7 @@
+-- IMPORTANTE: rode este script com o codepage UTF-8 para os acentos não corromperem:
+--   sqlcmd -S localhost -U sa -P <senha> -d SwiftDelivery -f 65001 -i seed.sql
+-- (o flag -f 65001 faz o sqlcmd ler o arquivo como UTF-8)
+
 -- Limpar dados existentes em ordem reversa de dependência
 DELETE FROM itens_pedido
 DELETE FROM pedidos
