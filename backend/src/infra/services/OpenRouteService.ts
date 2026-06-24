@@ -17,12 +17,22 @@ interface RespostaORS {
   }>
 }
 
+// Cache em memória das rotas já calculadas, indexado pelas coordenadas.
+// Como loja e endereço têm posição fixa, o resultado nunca muda — então
+// guardamos para não chamar a API do ORS duas vezes para o mesmo trajeto.
+const cacheRotas = new Map<string, ResultadoRota>()
+
 // Calcula a rota real de carro entre dois pontos usando a API OpenRouteService.
 // Atenção: o ORS espera as coordenadas na ordem [longitude, latitude].
 export async function calcularRota(
   origem: { latitude: number; longitude: number },
   destino: { latitude: number; longitude: number },
 ): Promise<ResultadoRota> {
+  // monta uma chave única para o trajeto e tenta achar no cache
+  const chave = `${origem.latitude},${origem.longitude}->${destino.latitude},${destino.longitude}`
+  const emCache = cacheRotas.get(chave)
+  if (emCache) return emCache
+
   const apiKey = process.env.ORS_API_KEY
   if (!apiKey) throw new Error('ORS_API_KEY não configurada no .env')
 

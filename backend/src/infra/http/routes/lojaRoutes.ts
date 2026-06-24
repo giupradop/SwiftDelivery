@@ -7,5 +7,6 @@ const controller = new LojaController()
 router.get('/', (req, res) => controller.listar(req, res))
 router.get('/:id/produtos', (req, res) => controller.listarProdutos(req, res))
 router.get('/:id/pedidos', (req, res) => controller.listarPedidos(req, res))
+router.get('/:id/frete/:clienteId', (req, res) => controller.calcularFrete(req, res))
 
 export default router
