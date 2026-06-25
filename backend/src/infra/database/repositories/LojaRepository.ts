@@ -2,6 +2,7 @@ import { getPool } from '../connection'
 import { Loja } from '../../../domain/entities/Loja'
 import { TipoLoja } from '../../../domain/enums/TipoLoja'
 import { ProdutoRepository } from './ProdutoRepository'
+import type { IRepositorio } from '../../../domain/interfaces/IRepositorio'
 
 const produtoRepo = new ProdutoRepository()
 
@@ -22,7 +23,7 @@ function mapear(row: any): Loja {
   })
 }
 
-export class LojaRepository {
+export class LojaRepository implements IRepositorio<Loja> {
   async findAll(): Promise<Loja[]> {
     const pool = await getPool()
     const result = await pool.request()
