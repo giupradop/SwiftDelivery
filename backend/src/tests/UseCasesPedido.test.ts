@@ -3,7 +3,10 @@
  *
  * Estratégia: os use cases instanciam repositórios e serviços externos
  * diretamente no módulo. Para isolá-los do banco de dados real, usamos
- * jest.mock() antes de qualquer import dos módulos testados.
+ * jest.mock() — que substitui os métodos do PROTOTYPE das classes por
+ * jest.fn(). Como o prototype é compartilhado por todas as instâncias
+ * (inclusive a que o use case criou ao ser importado), configuramos o
+ * retorno em PedidoRepository.prototype.findById, etc.
  */
 
 import { StatusPedido } from '../domain/enums/StatusPedido'
@@ -16,7 +19,8 @@ import { Motorista } from '../domain/entities/Motorista'
 import { Cliente } from '../domain/entities/Cliente'
 
 // ─── Mocks dos repositórios e serviços externos ──────────────────────────────
-
+// jest.mock() é "içado" para o topo do arquivo, então os repositórios já estão
+// mockados quando os use cases os instanciam ao serem importados.
 jest.mock('../infra/database/repositories/PedidoRepository')
 jest.mock('../infra/database/repositories/ClienteRepository')
 jest.mock('../infra/database/repositories/MotoristaRepository')
@@ -30,7 +34,17 @@ import { PedidoRepository } from '../infra/database/repositories/PedidoRepositor
 import { ClienteRepository } from '../infra/database/repositories/ClienteRepository'
 import { MotoristaRepository } from '../infra/database/repositories/MotoristaRepository'
 import { CupomRepository } from '../infra/database/repositories/CupomRepository'
-import { calcularRota } from '../infra/services/OpenRouteService'
+
+import { AvancarStatusPedido } from '../application/use-cases/pedido/AvancarStatusPedido'
+import { CancelarPedido } from '../application/use-cases/pedido/CancelarPedido'
+import { ConfirmarEntrega } from '../application/use-cases/pedido/ConfirmarEntrega'
+import { ValidarCupom } from '../application/use-cases/pedido/ValidarCupom'
+
+// Atalhos para os métodos mockados no prototype (mais legível nos testes).
+const pedidoMock = PedidoRepository.prototype as jest.Mocked<PedidoRepository>
+const clienteMock = ClienteRepository.prototype as jest.Mocked<ClienteRepository>
+const motoristaMock = MotoristaRepository.prototype as jest.Mocked<MotoristaRepository>
+const cupomMock = CupomRepository.prototype as jest.Mocked<CupomRepository>
 
 // ─── Fábricas ────────────────────────────────────────────────────────────────
 
@@ -76,49 +90,39 @@ function makeCliente(): Cliente {
   })
 }
 
+// limpa o estado dos mocks antes de cada teste
+beforeEach(() => {
+  jest.resetAllMocks()
+})
+
 // ─── AvancarStatusPedido ─────────────────────────────────────────────────────
 
 describe('AvancarStatusPedido', () => {
-  let pedidoRepo: jest.Mocked<PedidoRepository>
-  let motoristaRepo: jest.Mocked<MotoristaRepository>
-
-  beforeEach(() => {
-    jest.resetAllMocks()
-    pedidoRepo = new PedidoRepository() as jest.Mocked<PedidoRepository>
-    motoristaRepo = new MotoristaRepository() as jest.Mocked<MotoristaRepository>
-    ;(PedidoRepository as jest.Mock).mockImplementation(() => pedidoRepo)
-    ;(MotoristaRepository as jest.Mock).mockImplementation(() => motoristaRepo)
-  })
-
   it('avança de AGUARDANDO_ACEITE para EM_PREPARO', async () => {
     const pedido = makePedidoComStatus(StatusPedido.AGUARDANDO_ACEITE)
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
-    pedidoRepo.update = jest.fn().mockResolvedValue(undefined)
+    pedidoMock.findById.mockResolvedValue(pedido)
+    pedidoMock.update.mockResolvedValue(undefined)
 
-    const { AvancarStatusPedido } = await import('../application/use-cases/pedido/AvancarStatusPedido')
     const result = await new AvancarStatusPedido().executar('ped-1')
 
     expect(result.status).toBe(StatusPedido.EM_PREPARO)
-    expect(pedidoRepo.update).toHaveBeenCalledWith(result)
+    expect(pedidoMock.update).toHaveBeenCalledWith(result)
   })
 
   it('lança erro quando pedido não existe', async () => {
-    pedidoRepo.findById = jest.fn().mockResolvedValue(null)
-    pedidoRepo.update = jest.fn()
+    pedidoMock.findById.mockResolvedValue(null)
 
-    const { AvancarStatusPedido } = await import('../application/use-cases/pedido/AvancarStatusPedido')
     await expect(new AvancarStatusPedido().executar('xxx')).rejects.toThrow('Pedido não encontrado')
   })
 
   it('atribui motorista disponível ao avançar de AGUARDANDO_MOTORISTA para A_CAMINHO', async () => {
     const pedido = makePedidoComStatus(StatusPedido.AGUARDANDO_MOTORISTA)
     const motorista = makeMotorista(true)
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
-    pedidoRepo.update = jest.fn().mockResolvedValue(undefined)
-    motoristaRepo.findAllDisponiveis = jest.fn().mockResolvedValue([motorista])
-    motoristaRepo.update = jest.fn().mockResolvedValue(undefined)
+    pedidoMock.findById.mockResolvedValue(pedido)
+    pedidoMock.update.mockResolvedValue(undefined)
+    motoristaMock.findAllDisponiveis.mockResolvedValue([motorista])
+    motoristaMock.update.mockResolvedValue(undefined)
 
-    const { AvancarStatusPedido } = await import('../application/use-cases/pedido/AvancarStatusPedido')
     const result = await new AvancarStatusPedido().executar('ped-1')
 
     expect(result.status).toBe(StatusPedido.A_CAMINHO)
@@ -128,10 +132,9 @@ describe('AvancarStatusPedido', () => {
 
   it('lança erro quando não há motoristas disponíveis', async () => {
     const pedido = makePedidoComStatus(StatusPedido.AGUARDANDO_MOTORISTA)
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
-    motoristaRepo.findAllDisponiveis = jest.fn().mockResolvedValue([])
+    pedidoMock.findById.mockResolvedValue(pedido)
+    motoristaMock.findAllDisponiveis.mockResolvedValue([])
 
-    const { AvancarStatusPedido } = await import('../application/use-cases/pedido/AvancarStatusPedido')
     await expect(new AvancarStatusPedido().executar('ped-1')).rejects.toThrow('Nenhum motorista disponível')
   })
 })
@@ -139,38 +142,27 @@ describe('AvancarStatusPedido', () => {
 // ─── CancelarPedido ──────────────────────────────────────────────────────────
 
 describe('CancelarPedido', () => {
-  let pedidoRepo: jest.Mocked<PedidoRepository>
-
-  beforeEach(() => {
-    jest.resetAllMocks()
-    pedidoRepo = new PedidoRepository() as jest.Mocked<PedidoRepository>
-    ;(PedidoRepository as jest.Mock).mockImplementation(() => pedidoRepo)
-  })
-
   it('cancela pedido em AGUARDANDO_ACEITE com sucesso', async () => {
     const pedido = makePedidoComStatus(StatusPedido.AGUARDANDO_ACEITE)
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
-    pedidoRepo.update = jest.fn().mockResolvedValue(undefined)
+    pedidoMock.findById.mockResolvedValue(pedido)
+    pedidoMock.update.mockResolvedValue(undefined)
 
-    const { CancelarPedido } = await import('../application/use-cases/pedido/CancelarPedido')
     const result = await new CancelarPedido().executar('ped-1')
 
     expect(result.status).toBe(StatusPedido.CANCELADO)
-    expect(pedidoRepo.update).toHaveBeenCalled()
+    expect(pedidoMock.update).toHaveBeenCalled()
   })
 
   it('lança erro ao cancelar pedido EM_PREPARO', async () => {
     const pedido = makePedidoComStatus(StatusPedido.EM_PREPARO)
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
+    pedidoMock.findById.mockResolvedValue(pedido)
 
-    const { CancelarPedido } = await import('../application/use-cases/pedido/CancelarPedido')
     await expect(new CancelarPedido().executar('ped-1')).rejects.toThrow()
   })
 
   it('lança erro quando pedido não encontrado', async () => {
-    pedidoRepo.findById = jest.fn().mockResolvedValue(null)
+    pedidoMock.findById.mockResolvedValue(null)
 
-    const { CancelarPedido } = await import('../application/use-cases/pedido/CancelarPedido')
     await expect(new CancelarPedido().executar('xxx')).rejects.toThrow('Pedido não encontrado')
   })
 })
@@ -178,33 +170,18 @@ describe('CancelarPedido', () => {
 // ─── ConfirmarEntrega ────────────────────────────────────────────────────────
 
 describe('ConfirmarEntrega', () => {
-  let pedidoRepo: jest.Mocked<PedidoRepository>
-  let clienteRepo: jest.Mocked<ClienteRepository>
-  let motoristaRepo: jest.Mocked<MotoristaRepository>
-
-  beforeEach(() => {
-    jest.resetAllMocks()
-    pedidoRepo = new PedidoRepository() as jest.Mocked<PedidoRepository>
-    clienteRepo = new ClienteRepository() as jest.Mocked<ClienteRepository>
-    motoristaRepo = new MotoristaRepository() as jest.Mocked<MotoristaRepository>
-    ;(PedidoRepository as jest.Mock).mockImplementation(() => pedidoRepo)
-    ;(ClienteRepository as jest.Mock).mockImplementation(() => clienteRepo)
-    ;(MotoristaRepository as jest.Mock).mockImplementation(() => motoristaRepo)
-  })
-
   it('confirma entrega, credita pontos e libera motorista', async () => {
     const pedido = makePedidoComStatus(StatusPedido.A_CAMINHO, 'mot-1')
     const cliente = makeCliente()
     const motorista = makeMotorista(false)
 
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
-    pedidoRepo.update = jest.fn().mockResolvedValue(undefined)
-    clienteRepo.findById = jest.fn().mockResolvedValue(cliente)
-    clienteRepo.update = jest.fn().mockResolvedValue(undefined)
-    motoristaRepo.findById = jest.fn().mockResolvedValue(motorista)
-    motoristaRepo.update = jest.fn().mockResolvedValue(undefined)
+    pedidoMock.findById.mockResolvedValue(pedido)
+    pedidoMock.update.mockResolvedValue(undefined)
+    clienteMock.findById.mockResolvedValue(cliente)
+    clienteMock.update.mockResolvedValue(undefined)
+    motoristaMock.findById.mockResolvedValue(motorista)
+    motoristaMock.update.mockResolvedValue(undefined)
 
-    const { ConfirmarEntrega } = await import('../application/use-cases/pedido/ConfirmarEntrega')
     const result = await new ConfirmarEntrega().executar('ped-1')
 
     expect(result.status).toBe(StatusPedido.ENTREGUE)
@@ -215,9 +192,8 @@ describe('ConfirmarEntrega', () => {
 
   it('lança erro ao tentar confirmar pedido que não está A_CAMINHO', async () => {
     const pedido = makePedidoComStatus(StatusPedido.EM_PREPARO)
-    pedidoRepo.findById = jest.fn().mockResolvedValue(pedido)
+    pedidoMock.findById.mockResolvedValue(pedido)
 
-    const { ConfirmarEntrega } = await import('../application/use-cases/pedido/ConfirmarEntrega')
     await expect(new ConfirmarEntrega().executar('ped-1')).rejects.toThrow('Só é possível confirmar entrega de pedidos a caminho')
   })
 })
@@ -225,18 +201,9 @@ describe('ConfirmarEntrega', () => {
 // ─── ValidarCupom ────────────────────────────────────────────────────────────
 
 describe('ValidarCupom', () => {
-  let cupomRepo: jest.Mocked<CupomRepository>
-
-  beforeEach(() => {
-    jest.resetAllMocks()
-    cupomRepo = new CupomRepository() as jest.Mocked<CupomRepository>
-    ;(CupomRepository as jest.Mock).mockImplementation(() => cupomRepo)
-  })
-
   it('retorna valido=true para cupom existente e válido', async () => {
-    cupomRepo.findByCodigo = jest.fn().mockResolvedValue(makeCupomValido())
+    cupomMock.findByCodigo.mockResolvedValue(makeCupomValido())
 
-    const { ValidarCupom } = await import('../application/use-cases/pedido/ValidarCupom')
     const resultado = await new ValidarCupom().executar('PROMO')
 
     expect(resultado.valido).toBe(true)
@@ -244,9 +211,8 @@ describe('ValidarCupom', () => {
   })
 
   it('retorna valido=false quando cupom não encontrado', async () => {
-    cupomRepo.findByCodigo = jest.fn().mockResolvedValue(null)
+    cupomMock.findByCodigo.mockResolvedValue(null)
 
-    const { ValidarCupom } = await import('../application/use-cases/pedido/ValidarCupom')
     const resultado = await new ValidarCupom().executar('INVALIDO')
 
     expect(resultado.valido).toBe(false)
@@ -257,9 +223,8 @@ describe('ValidarCupom', () => {
   it('retorna valido=false quando cupom está expirado/esgotado', async () => {
     const cupomInvalido = makeCupomValido()
     cupomInvalido.ativo = false
-    cupomRepo.findByCodigo = jest.fn().mockResolvedValue(cupomInvalido)
+    cupomMock.findByCodigo.mockResolvedValue(cupomInvalido)
 
-    const { ValidarCupom } = await import('../application/use-cases/pedido/ValidarCupom')
     const resultado = await new ValidarCupom().executar('PROMO')
 
     expect(resultado.valido).toBe(false)
