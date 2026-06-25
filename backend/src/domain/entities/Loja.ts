@@ -1,7 +1,8 @@
 import { Produto } from './Produto'
 import { TipoLoja } from '../enums/TipoLoja'
+import type { ICalculadoraFrete } from '../interfaces/ICalculadoraFrete'
 
-export class Loja {
+export class Loja implements ICalculadoraFrete {
   id: string
   nome: string
   tipo: TipoLoja

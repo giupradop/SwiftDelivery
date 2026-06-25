@@ -1,5 +1,6 @@
 import { getPool } from '../connection'
 import { Cliente } from '../../../domain/entities/Cliente'
+import type { IRepositorio } from '../../../domain/interfaces/IRepositorio'
 
 function mapear(row: any): Cliente {
   return new Cliente({
@@ -13,7 +14,7 @@ function mapear(row: any): Cliente {
   })
 }
 
-export class ClienteRepository {
+export class ClienteRepository implements IRepositorio<Cliente> {
   async findById(id: string): Promise<Cliente | null> {
     const pool = await getPool()
     const result = await pool.request()
